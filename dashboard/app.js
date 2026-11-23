@@ -266,7 +266,7 @@
       '<li><b>Airdrop.</b> Pool = implied × community share (12% user-facing apps, 10% DeFi infrastructure, 6% curated or institutional); ' + (m.depositor_share * 100) + '% assumed to reach depositors pro rata to TVL → value per $1k.</li>' +
       '<li><b>Farm plan.</b> The cheapest of the protocol\'s top three chains, that chain\'s wallet and gas per transaction, the category\'s own actions, a position sized to TVL (≥ $2,000 on Ethereum mainnet), a hold of 60–120 days by age. Totals add one-off gas and fees once and weekly ones for each week held.</li>' +
       '<li><b>Risk.</b> Youth, thin TVL, a 7-day outflow, a single chain and leverage or peg categories add points; ≥50 is High.</li></ol>' +
-      '<p class="note">For the reader and the judge: the board ranks ' + R.counts.ranked + ' pre-token protocols, all ' + R.counts.watchlist + ' on the watchlist plus ' + R.counts.early + ' below the $' + (R.floor_usd / 1e6) + 'M floor. Implied value is the model\'s claim, not a prediction that a token launches.</p></div>' +
+      '<p class="note">For the reader and the judge: the board ranks ' + R.counts.ranked + ' pre-token protocols, all ' + R.counts.watchlist + ' on the watchlist plus ' + R.counts.early + ' more it leaves out (below the $' + (R.floor_usd / 1e6) + 'M floor, or above it but filed under a parent and discounted ×' + m.family_parent + '). Implied value is the model\'s claim, not a prediction that a token launches.</p></div>' +
       compsCard() + '</div>';
   }
 

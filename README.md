@@ -7,7 +7,8 @@
 A token launch radar for make.fun's "Build the best token launch radar" bounty. It reads a sealed DefiLlama
 snapshot, finds the protocols that record no token yet, prices each one's would-be token from the snapshot's
 own figures (comparable FDV/TVL multiples of the tokenized protocols in the same category, seven-day TVL
-momentum, time running without a token, chain reach), estimates the airdrop pool and the value per $1,000
+momentum, time running without a token, chain reach, and a discount when a same-named protocol already
+trades or DefiLlama files it under a parent), estimates the airdrop pool and the value per $1,000
 farmed, and writes a chain- and category-specific farm plan with cost, gas and time for every row. The
 dashboard is a static, offline page: sortable, filterable board, KPI header, a detail view per protocol and
 the formula on screen.
