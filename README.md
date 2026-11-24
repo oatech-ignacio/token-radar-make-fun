@@ -6,12 +6,16 @@
 
 A token launch radar for make.fun's "Build the best token launch radar" bounty. It reads a sealed DefiLlama
 snapshot, finds the protocols that record no token yet, prices each one's would-be token from the snapshot's
-own figures (comparable FDV/TVL multiples of the tokenized protocols in the same category, seven-day TVL
-momentum, time running without a token, chain reach, and a discount when a same-named protocol already
-trades or DefiLlama files it under a parent), estimates the airdrop pool and the value per $1,000
-farmed, and writes a chain- and category-specific farm plan with cost, gas and time for every row. The
-dashboard is a static, offline page: sortable, filterable board, KPI header, a detail view per protocol and
-the formula on screen.
+own figures with one fitted equation, `ln V = b0 + b1·ln TVL + b2·ln(1+7d growth) + b3·ln(1+years with no token)`.
+The coefficients are fitted (Huber IRLS with a small ridge) on the snapshot's own protocols whose token
+trades, and tested blind: 5-fold cross-validation, a walk-forward split by listing date, a term-by-term
+ablation, and a flat mcap/TVL baseline. Each row carries an 80% band from the held-out errors. It
+estimates the airdrop pool and the drop per $1,000, and writes a chain- and category-specific farm plan
+with gas, fees and minutes per step. Costs are linear in the deposit, so every plan is sized to the
+deposit where the drop pays 3× its gas and your hours, with a Worth it / Thin / Skip verdict. The
+dashboard is a static, offline page. It has an integrity strip that answers the checks (coverage x/40,
+pre-token vs traded, model fit), KPIs, a sortable and filterable board, and a detail view that prints
+each value as its equation. The traded fit set sits on its own tab with blind predictions.
 
 ## Run it
 

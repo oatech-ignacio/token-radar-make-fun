@@ -1,9 +1,9 @@
 // Pre-Token Radar, a token-radar-01 entry (Node 22, standard library only).
 //
-// Reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), prices every pre-token
-// protocol with the comparables model in lib/model.ts (category mcap/TVL multiples from the snapshot's own
-// trading protocols x momentum x age without a token x chain reach x family), writes the ranked board with a
-// costed farm plan per row to /output/board.json, the dashboard's dataset to /output/data.js, copies
+// Reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), fits the value equation
+// ln mcap = b0 + b1 ln TVL + b2 ln(1+7d) + b3 ln(1+years) on the snapshot's own trading protocols and tests
+// it blind (fitValueModel in lib/model.ts), prices every pre-token protocol with it, writes the ranked board
+// with a deposit-sized, costed farm plan and verdict per row to /output/board.json, the dataset to /output/data.js, copies
 // dashboard/ and screenshots/ to /output, and last writes /output/dossier.json with the vendored library.
 //
 // The dashboard is a static page, no framework and no network: dashboard/index.html, app.css and app.js
@@ -87,6 +87,9 @@ writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEX
 
 process.stdout.write(
   `token radar (${radar.model_version}): ${radar.counts.protocols} protocols (${radar.counts.pre_token} pre-token, ${radar.counts.trading} trading, ${radar.counts.recorded} token recorded without a market cap), ` +
-    `${board.length} pre-token rows ranked: ${radar.counts.watchlist} watchlist + ${radar.counts.early} off it (${board.filter((r) => r.breakdown.family_kind !== 'none').length} discounted for a family token or parent record); ${radar.comparables.length} category multiples from ${radar.live.length} top trading comparables\n` +
+    `${board.length} pre-token rows ranked: watchlist ${radar.counts.covered}/${radar.counts.watchlist} + ${radar.counts.early} off it (${radar.counts.flagged} flagged for a family token or parent record)\n` +
+    `token radar: value fitted on ${radar.fit.n} trading protocols: ${radar.fit.coef.map((c) => `${c.term} ${c.b}±${c.se}`).join(', ')}; ` +
+    `5-fold R² ${radar.fit.cv.r2} rho ${radar.fit.cv.rho} (flat ratio ${radar.fit.baseline_cv.r2}), walk-forward R² ${radar.fit.walk.r2} rho ${radar.fit.walk.rho} (flat ratio ${radar.fit.baseline_walk.r2}); ` +
+    `verdicts ${['Worth it', 'Thin', 'Skip'].map((l) => `${l} ${board.filter((r) => r.plan.verdict.label === l).length}`).join(', ')}\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
