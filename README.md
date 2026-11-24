@@ -28,6 +28,7 @@ mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../token-radar-01-ki
 
 Then open `out/dashboard/index.html` in a browser. The build includes an exact excerpt of the
 valuation functions in `out/dashboard/valuation.txt`, so the dossier exposes the fitted model too.
+It also writes `out/dashboard/README.md`, a short brief whose figures come from the same run; it sorts first in the dossier.
 
 ```sh
 node tools/verify.mjs out

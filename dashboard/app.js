@@ -77,7 +77,7 @@
     { k: 'vt', l: 'V / TVL', n: 1, v: function (r) { return r.value.to_tvl; }, h: function (r) { return '<td class="n">' + (100 * r.value.to_tvl).toFixed(1) + '%</td>'; } },
     { k: 'peer', l: 'Peers w/ token', n: 1, v: function (r) { return r.peer_token_share; }, h: function (r) { return '<td class="n" title="Of the ' + M.peer_k + ' protocols nearest in TVL and age, the share that record a token">' + Math.round(100 * r.peer_token_share) + '%</td>'; } },
     { k: 'per1k', l: 'Drop / $1k', n: 1, v: function (r) { return r.per_1k_usd; }, h: function (r) { return '<td class="n">' + money(r.per_1k_usd) + '</td>'; } },
-    { k: 'verdict', l: 'Farm verdict', v: function (r) { return r.plan.verdict.usd_per_hour; }, h: function (r) {
+    { k: 'verdict', l: 'Farm verdict', s: 'net $/h', v: function (r) { return r.plan.verdict.usd_per_hour; }, h: function (r) {
       var v = r.plan.verdict;
       return '<td>' + vtag(v) + '<div class="pmeta">at ' + money(v.deposit_usd) + ' · ' + money(v.usd_per_hour) + '/h net</div></td>';
     } },
@@ -128,10 +128,10 @@
     var stepsOk = R.rows.every(function (r) { return r.plan.steps.length >= 3 && r.plan.steps.every(function (s) { return s.minutes > 0 || s.phase === 'Setup'; }); });
     var mono = R.rows.every(function (r, i) { return r.rank === i + 1 && (i === 0 || r.implied_value_usd <= R.rows[i - 1].implied_value_usd); });
     var beat = F.cv.r2 > F.baseline_cv.r2 && F.walk.r2 > F.baseline_walk.r2;
-    return '<div class="strip"><div class="scope"><b>' + covered + '/' + C.watchlist + '</b><span>watchlist covered · ' + C.early + ' discoveries</span></div>' +
-      '<div class="scope"><b>' + C.ranked + ' PRE-TOKEN</b><span>no symbol · no CoinGecko id · no market cap</span></div>' +
-      '<div class="scope excluded"><b>' + C.trading + ' TRADING · ' + C.recorded + ' RECORDED</b><span>excluded from ranks · ' + C.fit_set + ' non-CEX traded peers fit the model</span></div>' +
-      '<div class="scope"><b>' + (mono && stepsOk ? '✓ Verified' : 'Check data') + '</b><span>descending values · costed plans · click any row</span></div></div>';
+    return '<div class="strip"><div class="scope"><b>' + covered + '/' + C.watchlist + '</b><span>watchlist · ' + C.early + ' early finds</span></div>' +
+      '<div class="scope"><b>' + C.ranked + ' PRE-TOKEN</b><span>no symbol, CoinGecko id or cap</span></div>' +
+      '<div class="scope excluded"><b>' + C.trading + ' TRADING · ' + C.recorded + ' RECORDED</b><span>never ranked · ' + C.fit_set + ' fit the model</span></div>' +
+      '<div class="scope"><b>' + (mono && stepsOk ? '✓ Verified' : 'Check data') + '</b><span>values descend · plans costed</span></div></div>';
   }
 
   function equation(compact) {
@@ -140,34 +140,32 @@
       (compact ? '' : '<small>± ' + F.coef.slice(0, 4).map(function (c) { return c.se.toFixed(2); }).join(' / ') + ' (jackknife SE) · Huber IRLS, ridge ' + M.ridge + ' · chain ridge ' + M.effect_ridge + ' · n = ' + F.n + ' trading, CEX left out · 80% band ×' + Math.exp(F.band.q10).toFixed(2) + ' to ×' + Math.exp(F.band.q90).toFixed(1) + ' from held-out errors</small>');
   }
 
-  // Held-out predictions against the market's own caps: each dot was predicted with its fold left out.
-  function scatter(w, h) {
-    var lo = Math.log(2e6), hi = Math.log(2e11), pad = 30;
-    function cl(v) { return Math.min(Math.max(v, 2e6), 2e11); }
-    function sx(v) { return pad + (Math.log(cl(v)) - lo) / (hi - lo) * (w - pad - 8); }
-    function sy(v) { return h - pad + 6 - (Math.log(cl(v)) - lo) / (hi - lo) * (h - pad - 8); }
-    var o = '<line class="axis" x1="' + sx(2e6) + '" y1="' + sy(2e6) + '" x2="' + sx(2e11) + '" y2="' + sy(2e11) + '"/>';
-    [1e7, 1e9, 1e11].forEach(function (t) {
-      o += '<text x="' + sx(t) + '" y="' + (h - 8) + '" text-anchor="middle">' + money(t) + '</text><text x="2" y="' + (sy(t) + 3) + '">' + money(t) + '</text>';
-    });
-    R.live.forEach(function (l) {
-      o += '<circle class="pt' + (l.wf_pred_usd ? ' wf' : '') + '" cx="' + sx(l.cv_pred_usd).toFixed(1) + '" cy="' + sy(l.mcap_usd).toFixed(1) + '" r="2.6"><title>' + esc(l.name) + ': predicted ' + money(l.cv_pred_usd) + ', market ' + money(l.mcap_usd) + '</title></circle>';
-    });
-    return '<svg class="sc" viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="Held-out predicted value against market cap">' + o + '<text x="' + (w - 8) + '" y="' + (h - 20) + '" text-anchor="end">predicted, fold held out →</text><text x="34" y="12">↑ market cap</text></svg>';
+  // Blind tests on the traded peers: the fitted equation against a flat mcap/TVL rule, same folds, same split.
+  var TESTS = [['5-fold median miss', F.cv.med_err_x, F.baseline_cv.med_err_x, -1], ['Date-split median miss', F.walk.med_err_x, F.baseline_walk.med_err_x, -1],
+    ['5-fold R² (log cap)', F.cv.r2, F.baseline_cv.r2, 1], ['Date-split R² (log cap)', F.walk.r2, F.baseline_walk.r2, 1]];
+  var WINS = TESTS.filter(function (t) { return (t[1] - t[2]) * t[3] > 0; }).length;
+  function blindBox() {
+    return '<div class="scbox"><span class="cap">BLIND TEST ON ' + F.n + ' TRADED PEERS</span><table class="mini"><thead><tr><th>held out</th><th class="n">fitted</th><th class="n">flat mcap/TVL</th></tr></thead><tbody>' +
+      TESTS.map(function (t) {
+        var fx = function (x) { return t[3] < 0 ? '×' + f2(x) : f2(x); };
+        return '<tr><td>' + t[0] + '</td><td class="n"><b class="' + ((t[1] - t[2]) * t[3] > 0 ? 'up' : 'down') + '">' + fx(t[1]) + '</b></td><td class="n">' + fx(t[2]) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
   }
-
   function hero() {
     var worth = R.rows.filter(function (r) { return r.plan.verdict.label === 'Worth it'; });
+    var top = worth[0]; // rows arrive in rank order
+    var fast = worth.slice().sort(function (a, b) { return b.plan.verdict.usd_per_hour - a.plan.verdict.usd_per_hour; })[0];
     var k = [
-      [money(sum(R.rows, function (r) { return r.implied_value_usd; })), 'total implied token value'],
-      [worth.length + ' / ' + R.rows.length, 'modeled plans cover cash + time'],
-      [f2(F.cv.rho), 'held-out rank ρ · was ' + f2(F.experiments[0].cv.rho)],
-      ['×' + f2(F.cv.med_err_x), 'median held-out miss (factor)'],
+      [money(sum(R.rows, function (r) { return r.implied_value_usd; })), 'implied value of ' + R.rows.length + ' rows'],
+      [worth.length + ' / ' + R.rows.length, 'farms worth it at ≤ ' + money(M.deposit_max) + ' deposit'],
+      ['×' + f2(F.cv.med_err_x) + '<small> vs ×' + f2(F.baseline_cv.med_err_x) + '</small>', 'blind miss: fitted vs flat rule'],
+      [money(fast.plan.verdict.usd_per_hour) + '/h', 'best net pay · ' + esc(fast.name)],
     ];
-    return strip() + '<section class="hero"><div><div class="kpis">' + k.map(function (v) { return '<div class="kpi"><b>' + v[0] + '</b><span>' + v[1] + '</span></div>'; }).join('') + '</div>' +
+    return '<p class="headline"><span>Read first</span><b>' + worth.length + ' of ' + R.rows.length + '</b> repay ' + M.worth_ratio + '× gas, fees and hours · top farm <b>#' + top.rank + ' ' + esc(top.name) + '</b>: ' + money(top.implied_value_usd) + ' implied, ' + money(top.plan.verdict.deposit_usd) + ' in, ' + money(top.plan.verdict.usd_per_hour) + '/h net · fitted value beats flat mcap/TVL on <b>' + WINS + '/' + TESTS.length + '</b> blind tests</p>' +
+      strip() + '<section class="hero"><div><div class="kpis">' + k.map(function (v) { return '<div class="kpi"><b>' + v[0] + '</b><span>' + v[1] + '</span></div>'; }).join('') + '</div>' +
       '<div class="formula"><i>Fitted value: </i>' + equation() +
-      '<p class="judge">Exploratory held-out R² ' + f2(F.cv.r2) + ' · walk-forward R² ' + f2(F.walk.r2) + ' · nested selection R² ' + f2(F.nested_cv.r2) + '. Fitted from snapshot peers, no name-based valuation. Growth and age remain uncertain. Drop shares, gas and time prices are assumptions; no launch or eligibility is confirmed.</p></div></div>' +
-      '<div class="scbox"><span class="cap">ALREADY TRADING · NEVER IN THE RANKS</span><table class="mini"><thead><tr><th>Fit peer</th><th class="n">Market cap</th></tr></thead><tbody>' + R.live.slice(0, 2).map(function (l) { return '<tr><td><b>' + esc(l.name) + '</b><div class="pmeta">' + esc(l.symbol) + ' · ' + esc(l.category) + '</div></td><td class="n">' + money(l.mcap_usd) + '</td></tr>'; }).join('') + '</tbody></table><p class="note">' + F.n + ' traded peers → fitted coefficients.<br>' + C.ranked + ' pre-token rows → implied values.<br>Inspect all peers and errors in the trading tab.</p></div></section>';
+      '<p class="judge">Each row: its own TVL, 7d growth, years with no token and first chain. No name is hard-coded. Drop shares, gas and $' + M.time_usd_per_hour + '/h time are stated assumptions.</p></div></div>' +
+      blindBox() + '</section>';
   }
 
   function board() {
@@ -175,14 +173,17 @@
     var minOpts = [['10000000', '≥ $10M'], ['25000000', '≥ $25M'], ['50000000', '≥ $50M (floor)'], ['100000000', '≥ $100M'], ['500000000', '≥ $500M']];
     var active = S.q || S.cat || S.chain || S.status || S.risk || S.verdict || S.min !== '0';
     var wl = rows.filter(function (r) { return r.on_watchlist; }).length;
-    var summary = strip() + '<section class="fsum"><div><b>' + rows.length + '</b><span>match of ' + R.rows.length + '</span></div><div><b>' + wl + ' / ' + (rows.length - wl) + '</b><span>watchlist / off it</span></div>' +
+    var sc = COLS.filter(function (c) { return c.k === S.sort; })[0] || COLS[0], sortCol = sc.s || sc.l;
+    var t = rows[0], tv = t && t.plan.verdict;
+    var summary = (t ? '<p class="headline"><span>Top of this view</span>' + rows.length + ' match, sorted by ' + sortCol.toLowerCase() + '. <b>#' + t.rank + ' ' + esc(t.name) + '</b>: ' + money(t.implied_value_usd) + ' implied, ' + tv.label + ' at ' + money(tv.deposit_usd) + ', ' + money(t.plan.total_cost_usd) + ' gas + fees, ' + tv.hours + ' h of work, ' + money(tv.usd_per_hour) + '/h net.</p>' : '') +
+      strip() + '<section class="fsum"><div><b>' + rows.length + '</b><span>match of ' + R.rows.length + '</span></div><div><b>' + (rows.length - wl) + '</b><span>off-watchlist finds · ' + wl + ' watchlist</span></div>' +
       '<div><b>' + money(sum(rows, function (r) { return r.implied_value_usd; })) + '</b><span>implied value</span></div>' +
       '<div><b>' + money(median(rows.map(function (r) { return r.per_1k_usd; }))) + '</b><span>median drop / $1k</span></div><div><b>' + money(median(rows.map(function (r) { return r.plan.total_cost_usd; }))) + '</b><span>median gas + fees</span></div>' +
-      '<div><b>' + rows.filter(function (r) { return r.plan.verdict.label === 'Worth it'; }).length + '</b><span>worth it</span></div>' +
-      '<p class="formula-mini">' + equation(true) + ' · sorted by ' + (COLS.filter(function (c) { return c.k === S.sort; })[0] || COLS[0]).l + (S.dir === '1' ? ' ▲' : ' ▼') + ' · click a row for its equation and plan</p></section>';
+      '<div><b>' + money(median(rows.map(function (r) { return r.plan.verdict.usd_per_hour; }))) + '/h</b><span>median net pay</span></div>' +
+      '<p class="formula-mini">' + equation(true) + ' · sorted by ' + sortCol + (S.dir === '1' ? ' ▲' : ' ▼') + ' · click a row for its equation and plan</p></section>';
     var html = (active ? summary : hero()) +
       '<div class="filters">' +
-      '<input id="f-q" type="search" placeholder="Search protocol, category, chain…" value="' + esc(S.q) + '" aria-label="Search">' +
+      '<input id="f-q" type="search" placeholder="Search name, chain…" value="' + esc(S.q) + '" aria-label="Search">' +
       '<select id="f-cat" aria-label="Category">' + options(CATS, S.cat, 'All categories') + '</select>' +
       '<select id="f-chain" aria-label="Chain">' + options(CHAINS, S.chain, 'All chains') + '</select>' +
       '<select id="f-status" aria-label="Status">' + options([['wl', 'Watchlist (≥ floor)'], ['early', 'Off watchlist'], ['clean', 'No family token']], S.status, 'All pre-token') + '</select>' +
@@ -241,14 +242,14 @@
       var parts = [];
       if (s.capital_usd) parts.push(money(s.capital_usd) + ' in');
       if (s.gas_usd || s.fee_usd) parts.push(money(s.gas_usd + s.fee_usd) + ' gas/fee');
-      return '<tr><td class="ph"><span class="' + s.phase + '">' + s.phase + '</span></td><td>' + (i + 1) + '. ' + esc(s.text) + '</td><td class="c"><b>' + (parts.join(' + ') || 'free') + '</b>' + s.minutes + ' min · ' + esc(s.when) + '</td></tr>';
+      return '<tr><td class="ph"><span class="' + s.phase + '">' + s.phase + '</span></td><td>' + (i + 1) + '. ' + esc(s.text) + '</td><td class="c"><b>' + (parts.join('<br>+ ') || 'free') + '</b>' + s.minutes + ' min · ' + esc(s.when) + '</td></tr>';
     }).join('');
     return '<div class="dhead"><div><div class="pmeta">#' + r.rank + ' of ' + R.rows.length + ' · ' + esc(r.category || 'Uncategorized') + ' · pre-token: no token recorded</div><h2>' + esc(r.name) + badge(r) + '</h2><div class="pmeta">' + esc(r.chains.slice(0, 7).join(' · ')) + (r.chains.length > 7 ? ' · +' + (r.chains.length - 7) + ' more' : '') + '</div></div><button class="x" id="d-x" aria-label="Close">✕</button></div>' +
       '<div class="facts"><div><b>' + money(r.implied_value_usd) + '</b><span>implied value</span></div><div><b>' + money(r.tvl_usd) + '</b><span>TVL</span></div><div><b>' + pct(r.change_7d) + '</b><span>7d TVL</span></div><div><b>' + days(r.value.age_days) + '</b><span>no token, since ' + esc(r.listed_at || 'n/a') + '</span></div></div>' +
       '<div class="detail-grid"><section><h3>The value as an equation</h3>' + eqTable(r) +
       '<h3>Airdrop math</h3><div class="calc">pool = <b>' + money(r.implied_value_usd) + '</b> × ' + (r.airdrop_share * 100).toFixed(0) + '% community share = <b>' + money(r.airdrop_pool_usd) + '</b> · per $1k = pool × ' + (M.depositor_share * 100) + '% to depositors × $1,000 / TVL = <b>' + money(r.per_1k_usd) + '</b></div>' +
-      '<h3>Verdict · ' + vtag(v) + '</h3><p class="vtext v-' + v.label.replace(' ', '') + '">' + esc(v.text) + '</p><details><summary>Compare deposit sizes</summary>' + tiers(r) + '</details>' +
-      '<h3>Risk · <span class="risk r-' + r.risk.level + '">' + r.risk.level + ' ' + r.risk.score + '/100</span></h3><ul class="notes">' + r.risk.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></section><section>' +
+      '<h3>Verdict · ' + vtag(v) + '</h3><p class="vtext v-' + v.label.replace(' ', '') + '">' + esc(v.text) + '</p><details open><summary>Same plan at other deposit sizes</summary>' + tiers(r) + '</details>' +
+      '<h3>Risk · <span class="risk r-' + r.risk.level + '">' + r.risk.level + ' ' + r.risk.score + '/100</span> <span class="rnote">' + esc(r.risk.notes.join('; ')) + '</span></h3></section><section>' +
       '<h3>Conditional farm route · ' + esc(p.chain) + ' · ' + esc(p.wallet) + ' · ' + money(p.capital_usd) + '</h3><p class="route-note">Category-derived route. Verify assets, deployment and withdrawals in the official app before funding. Costs below are budget assumptions, not live quotes.</p><table class="plan"><tbody>' + plan + '</tbody></table>' +
       '<div class="totals"><div><b>' + money(p.total_cost_usd) + '</b><span>gas + fees, whole hold</span></div><div><b>' + p.setup_minutes + ' min</b><span>to set up</span></div><div><b>' + p.weekly_minutes + ' min/wk</b><span>upkeep · ' + p.hold_days + ' d hold</span></div><div><b>' + money(v.usd_per_hour) + '/h</b><span>net per hour of work</span></div></div>' +
       '</section></div>' +
