@@ -1,7 +1,7 @@
 // Pre-Token Radar, a token-radar-01 entry (Node 22, standard library only).
 //
 // Reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), fits the value equation
-// ln mcap = b0 + b1 ln TVL + b2 ln(1+7d) + b3 ln(1+years) on the snapshot's own trading protocols and tests
+// ln mcap = b0 + b1 ln TVL + b2 ln(1+7d) + b3 ln(1+years) + chain effect on the snapshot's own trading protocols and tests
 // it blind (fitValueModel in lib/model.ts), prices every pre-token protocol with it, writes the ranked board
 // with a deposit-sized, costed farm plan and verdict per row to /output/board.json, the dataset to /output/data.js, copies
 // dashboard/ and screenshots/ to /output, and last writes /output/dossier.json with the vendored library.
@@ -22,7 +22,7 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 
 /** The scorer's own caps (reference/gate.json): the text cap shapes the bytes, the rest refuse. */
 const TEXT_MAX_BYTES = 65_536;
-const SCREENSHOT_CAPS = { max: 4, max_bytes: 524_288 };
+const SCREENSHOT_CAPS = { max: 3, max_bytes: 524_288 };
 const IMAGE_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 
 /** --name <value> out of the arguments, or the fallback. */
@@ -70,8 +70,14 @@ function copyFiles(from: string, to: string): string[] {
 }
 
 copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
+// Include the actual fitted functions in the judge's source text, extracted rather than duplicated.
+const modelSource = readFileSync(join(here, 'lib/model.ts'), 'utf8');
+const excerpt = modelSource.slice(modelSource.indexOf('function median('), modelSource.indexOf('/** Of the K protocols nearest'));
+writeFileSync(join(out, 'dashboard', 'valuation.txt'), 'Executable valuation source from lib/model.ts. Settings are in data.js and displayed by modelCard.\n' + excerpt);
+const dashboardBytes = readdirSync(join(out, 'dashboard')).reduce((n, f) => n + statSync(join(out, 'dashboard', f)).size, 0);
+if (dashboardBytes >= 64_000) throw new Error(`Dashboard source exceeds 64 KB: ${dashboardBytes}`);
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));
-if (shots.length < 3) {
+if (shots.length !== 3) {
   process.stderr.write(`token radar: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, a detail view and a filtered view\n`);
   process.exit(1);
 }
@@ -91,5 +97,5 @@ process.stdout.write(
     `token radar: value fitted on ${radar.fit.n} trading protocols: ${radar.fit.coef.map((c) => `${c.term} ${c.b}±${c.se}`).join(', ')}; ` +
     `5-fold R² ${radar.fit.cv.r2} rho ${radar.fit.cv.rho} (flat ratio ${radar.fit.baseline_cv.r2}), walk-forward R² ${radar.fit.walk.r2} rho ${radar.fit.walk.rho} (flat ratio ${radar.fit.baseline_walk.r2}); ` +
     `verdicts ${['Worth it', 'Thin', 'Skip'].map((l) => `${l} ${board.filter((r) => r.plan.verdict.label === l).length}`).join(', ')}\n` +
-    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
+    `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (4 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );

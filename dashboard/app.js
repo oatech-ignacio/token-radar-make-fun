@@ -2,6 +2,8 @@
 // is the same rows) and renders three views: the ranked pre-token board, the trading protocols the value
 // model is fitted on (kept apart, never ranked), and the model with its blind tests.
 // No framework, no network. Every figure on screen is read from RADAR or computed here from it.
+// valuation.txt is extracted from the executable model on every build: fitValueModel, features,
+// fitHuber and valueOf. It is included whole in the dossier for an auditable fitted equation.
 // State lives in the URL hash so every view (a filter, an open detail) is a link.
 (function () {
   'use strict';
@@ -126,21 +128,16 @@
     var stepsOk = R.rows.every(function (r) { return r.plan.steps.length >= 3 && r.plan.steps.every(function (s) { return s.minutes > 0 || s.phase === 'Setup'; }); });
     var mono = R.rows.every(function (r, i) { return r.rank === i + 1 && (i === 0 || r.implied_value_usd <= R.rows[i - 1].implied_value_usd); });
     var beat = F.cv.r2 > F.baseline_cv.r2 && F.walk.r2 > F.baseline_walk.r2;
-    var chk = [
-      [covered === C.watchlist, 'Watchlist <b>' + covered + '/' + C.watchlist + '</b> covered'],
-      [true, '<b>' + C.ranked + '</b> pre-token ranked · <b>' + C.fit_set + '</b> traded kept apart · ' + C.recorded + ' token-recorded excluded'],
-      [mono, 'Ranks 1–' + C.ranked + ' by implied value, none rising'],
-      [true, 'Value <b>fitted</b> on ' + F.n + ' traded tokens, no name list'],
-      [beat, 'Blind tests: 5-fold ρ <b>' + f2(F.cv.rho) + '</b>, walk-forward ρ <b>' + f2(F.walk.rho) + '</b>, both beat flat ratio'],
-      [stepsOk, 'Every plan: $ cost, minutes, verdict'],
-    ];
-    return '<div class="strip" aria-label="Integrity checks, computed on this page from the data">' + chk.map(function (c) { return '<span class="chk ' + (c[0] ? 'ok' : 'no') + '">' + (c[0] ? '✓' : '✗') + ' ' + c[1] + '</span>'; }).join('') + '</div>';
+    return '<div class="strip"><div class="scope"><b>' + covered + '/' + C.watchlist + '</b><span>watchlist covered · ' + C.early + ' discoveries</span></div>' +
+      '<div class="scope"><b>' + C.ranked + ' PRE-TOKEN</b><span>no symbol · no CoinGecko id · no market cap</span></div>' +
+      '<div class="scope excluded"><b>' + C.trading + ' TRADING · ' + C.recorded + ' RECORDED</b><span>excluded from ranks · ' + C.fit_set + ' non-CEX traded peers fit the model</span></div>' +
+      '<div class="scope"><b>' + (mono && stepsOk ? '✓ Verified' : 'Check data') + '</b><span>descending values · costed plans · click any row</span></div></div>';
   }
 
   function equation(compact) {
     var b = F.coef.map(function (c) { return c.b; });
-    return '<span class="eq">ln V = ' + f2(b[0]) + ' ' + sg(b[1], 3) + '·ln TVL ' + sg(b[2], 3) + '·ln(1+7d) ' + sg(b[3], 3) + '·ln(1+years with no token)</span>' +
-      (compact ? '' : '<small>± ' + F.coef.map(function (c) { return c.se.toFixed(2); }).join(' / ') + ' (jackknife SE) · Huber IRLS, ridge ' + M.ridge + ' · n = ' + F.n + ' trading, CEX left out · 80% band ×' + Math.exp(F.band.q10).toFixed(2) + ' to ×' + Math.exp(F.band.q90).toFixed(1) + ' from held-out errors</small>');
+    return '<span class="eq">ln V = ' + f2(b[0]) + ' ' + sg(b[1], 3) + '·ln TVL ' + sg(b[2], 3) + '·ln(1+7d) ' + sg(b[3], 3) + '·ln(1+years) + fitted chain effect</span>' +
+      (compact ? '' : '<small>± ' + F.coef.slice(0, 4).map(function (c) { return c.se.toFixed(2); }).join(' / ') + ' (jackknife SE) · Huber IRLS, ridge ' + M.ridge + ' · chain ridge ' + M.effect_ridge + ' · n = ' + F.n + ' trading, CEX left out · 80% band ×' + Math.exp(F.band.q10).toFixed(2) + ' to ×' + Math.exp(F.band.q90).toFixed(1) + ' from held-out errors</small>');
   }
 
   // Held-out predictions against the market's own caps: each dot was predicted with its fold left out.
@@ -160,20 +157,17 @@
   }
 
   function hero() {
-    var rows = R.rows;
-    var worth = rows.filter(function (r) { return r.plan.verdict.label === 'Worth it'; });
-    var best = worth.slice().sort(function (a, b) { return b.plan.verdict.usd_per_hour - a.plan.verdict.usd_per_hour; })[0];
+    var worth = R.rows.filter(function (r) { return r.plan.verdict.label === 'Worth it'; });
     var k = [
-      [C.ranked, 'pre-token ranked · ' + C.watchlist + ' watchlist + ' + C.early + ' found off it'],
-      [money(sum(rows, function (r) { return r.implied_value_usd; })), 'implied value still to launch'],
-      [(100 * median(rows.map(function (r) { return r.value.to_tvl; }))).toFixed(1) + '%', 'median implied value / TVL'],
-      [worth.length + ' / ' + rows.length, 'plans worth it at a sized deposit'],
-      ['<b class="t">' + esc(best.name) + '</b>', 'best farm: ' + money(best.plan.verdict.usd_per_hour) + '/h net at ' + money(best.plan.verdict.deposit_usd)],
+      [money(sum(R.rows, function (r) { return r.implied_value_usd; })), 'total implied token value'],
+      [worth.length + ' / ' + R.rows.length, 'modeled plans cover cash + time'],
+      [f2(F.cv.rho), 'held-out rank ρ · was ' + f2(F.experiments[0].cv.rho)],
+      ['×' + f2(F.cv.med_err_x), 'median held-out miss (factor)'],
     ];
-    return strip() + '<section class="hero"><div><div class="kpis">' + k.map(function (v) { return '<div class="kpi">' + (String(v[0]).indexOf('<b') === 0 ? v[0] : '<b>' + v[0] + '</b>') + '<span>' + v[1] + '</span></div>'; }).join('') + '</div>' +
-      '<div class="formula"><i>Implied value, fitted:</i> ' + equation() +
-      '<p class="judge">To the judge: every row\'s value is this one equation applied to the row\'s own TVL, 7-day growth and days with no token; the detail view prints it term by term. The fit is honest, not tuned: TVL carries it (elasticity ' + f2(coef(1).b) + ', so value grows slower than TVL and $1B curators are not priced like comps); growth and age are fitted near zero and the Model tab shows the ablation. Traded tokens are the fit set and never enter the ranks.</p></div></div>' +
-      '<div class="scbox"><span class="cap">Blind test · ' + F.n + ' traded tokens · ρ ' + f2(F.cv.rho) + ' · median miss ×' + f2(F.cv.med_err_x) + '</span>' + scatter(340, 230) + '<span class="cap"><i class="dot wf"></i>walk-forward test set (listed after ' + esc(F.walk.cut) + ')</span></div></section>';
+    return strip() + '<section class="hero"><div><div class="kpis">' + k.map(function (v) { return '<div class="kpi"><b>' + v[0] + '</b><span>' + v[1] + '</span></div>'; }).join('') + '</div>' +
+      '<div class="formula"><i>Fitted value: </i>' + equation() +
+      '<p class="judge">Exploratory held-out R² ' + f2(F.cv.r2) + ' · walk-forward R² ' + f2(F.walk.r2) + ' · nested selection R² ' + f2(F.nested_cv.r2) + '. Fitted from snapshot peers, no name-based valuation. Growth and age remain uncertain. Drop shares, gas and time prices are assumptions; no launch or eligibility is confirmed.</p></div></div>' +
+      '<div class="scbox"><span class="cap">ALREADY TRADING · NEVER IN THE RANKS</span><table class="mini"><thead><tr><th>Fit peer</th><th class="n">Market cap</th></tr></thead><tbody>' + R.live.slice(0, 2).map(function (l) { return '<tr><td><b>' + esc(l.name) + '</b><div class="pmeta">' + esc(l.symbol) + ' · ' + esc(l.category) + '</div></td><td class="n">' + money(l.mcap_usd) + '</td></tr>'; }).join('') + '</tbody></table><p class="note">' + F.n + ' traded peers → fitted coefficients.<br>' + C.ranked + ' pre-token rows → implied values.<br>Inspect all peers and errors in the trading tab.</p></div></section>';
   }
 
   function board() {
@@ -225,7 +219,7 @@
     var v = r.value;
     var raw = ['1', 'ln ' + money(r.tvl_usd), 'ln(1 ' + sg(v.growth_pct, 2) + '%)', 'ln(1 + ' + v.years_used.toFixed(2) + ' y)' + (v.age_days === null ? ' · no listing date: fit-set median' : '')];
     var rows = v.terms.map(function (t, i) {
-      return '<tr><td>' + esc(t.term) + '</td><td class="n">' + t.b.toFixed(4) + '</td><td class="n">× ' + t.x.toFixed(4) + '</td><td class="pmeta">' + esc(raw[i]) + '</td><td class="n"><b>' + sg(t.contrib, 3) + '</b></td></tr>';
+      return '<tr><td>' + esc(t.term) + '</td><td class="n">' + t.b.toFixed(4) + '</td><td class="n">× ' + t.x.toFixed(4) + '</td><td class="pmeta">' + esc(raw[i] || ((r.chains[0] || 'Unknown') + ' indicator = ' + t.x)) + '</td><td class="n"><b>' + sg(t.contrib, 3) + '</b></td></tr>';
     }).join('');
     return '<table class="eqt"><thead><tr><th>term</th><th class="n">fitted b</th><th class="n">feature</th><th>from the snapshot</th><th class="n">ln pts</th></tr></thead><tbody>' + rows +
       '<tr class="tot"><td colspan="4">ln V = Σ = ' + v.ln_value.toFixed(4) + '  →  V = e<sup>' + v.ln_value.toFixed(3) + '</sup></td><td class="n"><b>' + money(r.implied_value_usd) + '</b></td></tr></tbody></table>' +
@@ -251,12 +245,13 @@
     }).join('');
     return '<div class="dhead"><div><div class="pmeta">#' + r.rank + ' of ' + R.rows.length + ' · ' + esc(r.category || 'Uncategorized') + ' · pre-token: no token recorded</div><h2>' + esc(r.name) + badge(r) + '</h2><div class="pmeta">' + esc(r.chains.slice(0, 7).join(' · ')) + (r.chains.length > 7 ? ' · +' + (r.chains.length - 7) + ' more' : '') + '</div></div><button class="x" id="d-x" aria-label="Close">✕</button></div>' +
       '<div class="facts"><div><b>' + money(r.implied_value_usd) + '</b><span>implied value</span></div><div><b>' + money(r.tvl_usd) + '</b><span>TVL</span></div><div><b>' + pct(r.change_7d) + '</b><span>7d TVL</span></div><div><b>' + days(r.value.age_days) + '</b><span>no token, since ' + esc(r.listed_at || 'n/a') + '</span></div></div>' +
-      '<h3>The value as an equation</h3>' + eqTable(r) +
+      '<div class="detail-grid"><section><h3>The value as an equation</h3>' + eqTable(r) +
       '<h3>Airdrop math</h3><div class="calc">pool = <b>' + money(r.implied_value_usd) + '</b> × ' + (r.airdrop_share * 100).toFixed(0) + '% community share = <b>' + money(r.airdrop_pool_usd) + '</b> · per $1k = pool × ' + (M.depositor_share * 100) + '% to depositors × $1,000 / TVL = <b>' + money(r.per_1k_usd) + '</b></div>' +
-      '<h3>Verdict · ' + vtag(v) + '</h3><p class="vtext v-' + v.label.replace(' ', '') + '">' + esc(v.text) + '</p>' + tiers(r) +
-      '<h3>Farm plan · ' + esc(p.chain) + ' · ' + esc(p.wallet) + ' · ' + money(p.capital_usd) + '</h3><table class="plan"><tbody>' + plan + '</tbody></table>' +
+      '<h3>Verdict · ' + vtag(v) + '</h3><p class="vtext v-' + v.label.replace(' ', '') + '">' + esc(v.text) + '</p><details><summary>Compare deposit sizes</summary>' + tiers(r) + '</details>' +
+      '<h3>Risk · <span class="risk r-' + r.risk.level + '">' + r.risk.level + ' ' + r.risk.score + '/100</span></h3><ul class="notes">' + r.risk.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></section><section>' +
+      '<h3>Conditional farm route · ' + esc(p.chain) + ' · ' + esc(p.wallet) + ' · ' + money(p.capital_usd) + '</h3><p class="route-note">Category-derived route. Verify assets, deployment and withdrawals in the official app before funding. Costs below are budget assumptions, not live quotes.</p><table class="plan"><tbody>' + plan + '</tbody></table>' +
       '<div class="totals"><div><b>' + money(p.total_cost_usd) + '</b><span>gas + fees, whole hold</span></div><div><b>' + p.setup_minutes + ' min</b><span>to set up</span></div><div><b>' + p.weekly_minutes + ' min/wk</b><span>upkeep · ' + p.hold_days + ' d hold</span></div><div><b>' + money(v.usd_per_hour) + '/h</b><span>net per hour of work</span></div></div>' +
-      '<h3>Risk · <span class="risk r-' + r.risk.level + '">' + r.risk.level + ' ' + r.risk.score + '/100</span></h3><ul class="notes">' + r.risk.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' +
+      '</section></div>' +
       '<p class="note">Implied value is this model\'s claim from the snapshot of ' + esc(R.as_of) + ', not a forecast that a token will launch. The record shows no token; that does not prove none exists.</p>';
   }
   function openDetail(slug) {
@@ -291,21 +286,24 @@
         var ab = F.ablation.filter(function (a) { return a.term === c.term; })[0];
         return '<tr><td>' + esc(c.term) + '</td><td class="n"><b>' + c.b.toFixed(4) + '</b></td><td class="n">' + c.se.toFixed(4) + '</td><td class="n">' + (ab ? f2(ab.cv.r2) + ' vs ' + f2(F.cv.r2) : '–') + '</td></tr>';
       }).join('') + '</tbody></table>' +
-      '<h2>Blind tests</h2><table><thead><tr><th>test</th><th class="n">n</th><th class="n">R²</th><th class="n">ρ</th><th class="n">median miss</th><th></th></tr></thead><tbody>' +
-      scoreRow('In sample', F.in_sample, 'not a test') + scoreRow('5-fold held out', F.cv, 'fold = slug order mod ' + M.folds) + scoreRow('Flat ratio, 5-fold', F.baseline_cv, 'V = TVL × median mcap/TVL') +
+      '<h2>Held-out diagnostics · log market cap</h2><table><thead><tr><th>test</th><th class="n">n</th><th class="n">R²</th><th class="n">ρ</th><th class="n">median miss</th><th></th></tr></thead><tbody>' +
+      scoreRow('In sample', F.in_sample, 'not a test') + scoreRow('5-fold diagnostic', F.cv, 'fold = slug order mod ' + M.folds) + scoreRow('Flat ratio, 5-fold', F.baseline_cv, 'V = TVL × median mcap/TVL') +
       scoreRow('Walk-forward', F.walk, F.walk.n_train + ' older train, listed ≥ ' + esc(F.walk.cut) + ' test') + scoreRow('Flat ratio, walk-fwd', F.baseline_walk, 'same split') + '</tbody></table>' +
-      '<p class="note">Read plainly: TVL ranks token value (ρ ' + f2(F.cv.rho) + ' held out) and the fitted elasticity beats a flat mcap/TVL multiple in both tests, but a snapshot explains little of the level: a typical miss is ×' + f2(F.cv.med_err_x) + ', hence the 80% band on every row. The 7-day and age terms are fitted, not set; held out they add nothing, so the data shrinks them to near zero and they move a value by a few per cent at most.</p></div>';
+      '<p class="note">Feature families were explored on these splits: these are diagnostics, not untouched future tests. Walk-forward sorts listing dates within one snapshot; it is not a historical backtest. R² is measured on log market cap. The 80% band is the empirical 10th–90th percentile of fold residuals, not a calibrated launch forecast.</p>' +
+      '<h2>Feature experiment audit</h2><table><thead><tr><th>Features</th><th class="n">5-fold R²</th><th class="n">walk R²</th><th class="n">walk miss</th></tr></thead><tbody>' + F.experiments.map(function (e) { return '<tr><td>' + esc(e.name) + '</td><td class="n">' + f2(e.cv.r2) + '</td><td class="n">' + f2(e.walk.r2) + '</td><td class="n">×' + f2(e.walk.med_err_x) + '</td></tr>'; }).join('') + '</tbody></table>' +
+      '<p class="note">Nested 5-fold: an inner 4-fold chooses among those four families, then the outer fold is predicted once. R² ' + f2(F.nested_cv.r2) + ', ρ ' + f2(F.nested_cv.rho) + ', median miss ×' + f2(F.nested_cv.med_err_x) + '. This estimates the selection procedure, rather than the final fixed model. These candidate families were themselves developed using this snapshot.</p></div>';
+
   }
 
   // ---------- method ----------
   function method() {
     return '<div class="cols"><div class="card"><h2>Method · model ' + esc(R.model_version) + '</h2>' +
-      '<p>Every figure comes from the sealed snapshot (' + esc(R.source) + '). No protocol name is special-cased; one function scores every row.</p><ol>' +
+      '<p>Protocol figures come from the sealed snapshot (' + esc(R.source) + '). No protocol name is special-cased; one function scores every row.</p><ol>' +
       '<li><b>Status.</b> Pre-token = no symbol, no CoinGecko id, no market cap (' + C.pre_token + '). Trading = a market cap (' + C.trading + '; ' + C.fit_set + ' without CEX are the fit set). Recorded = a symbol but no cap (' + C.recorded + '). Only pre-token rows are ranked; wrapped, staked, bridged, exchange and versioned products are dropped below the floor with the watchlist\'s own rule.</li>' +
-      '<li><b>Value.</b> ' + equation(true) + ', fitted by Huber IRLS (k ' + M.huber_k + ') with ridge ' + M.ridge + ' on the slopes; 7d clamped ' + M.growth_floor + '…+' + M.growth_cap + '%; years = listed_at to as_of, which for a pre-token protocol is its time with no token.</li>' +
+      '<li><b>Value.</b> ' + equation(true) + ', fitted by Huber IRLS (k ' + M.huber_k + ') with ridge ' + M.ridge + ' on base slopes and ' + M.effect_ridge + ' on primary-chain indicators; unseen chain effects are zero. Category effects did not improve validation. 7d clamped ' + M.growth_floor + '…+' + M.growth_cap + '%; years = listed_at to as_of, which for a pre-token protocol is its time with no token.</li>' +
       '<li><b>Flags.</b> A sibling (a same-first-word protocol that records a token) or a parent record (above the floor, passing every rule, yet off the watchlist) is badged and adds ' + M.family_risk + ' risk points; it never changes the fitted value.</li>' +
       '<li><b>Airdrop.</b> Pool = implied × community share (12% user apps, 10% DeFi infrastructure, 6% curated or institutional); ' + (M.depositor_share * 100) + '% reaches depositors pro rata to TVL → drop per $1k. These two shares are stated assumptions, not fitted.</li>' +
-      '<li><b>Farm plan.</b> The cheapest of the top three chains, its wallet and gas per transaction, the category\'s own steps. Gas and fees are linear in the deposit, so cost = fixed + rate × deposit exactly; time is priced at ' + money(M.time_usd_per_hour) + '/h. Worth it = the drop covers ' + M.worth_ratio + '× the gas and fees and your hours, at a deposit ≤ ' + money(M.deposit_max) + '; the plan is sized to the smallest such tier. Thin = it only covers gas. Skip = it never does.</li>' +
+      '<li><b>Farm plan.</b> The first listed chain, its wallet and gas budget, with conditional category-derived actions. The snapshot has no contract addresses, accepted assets or points rules; verify those in the app. Gas and fees are linear in the deposit, so cost = fixed + rate × deposit exactly; time is priced at ' + money(M.time_usd_per_hour) + '/h. Worth it = the drop covers ' + M.worth_ratio + '× the gas and fees and your hours, at a deposit ≤ ' + money(M.deposit_max) + '; the plan is sized to the smallest such tier. Thin = it only covers gas. Skip = it never does.</li>' +
       '<li><b>Risk.</b> Youth, thin TVL, a 7-day outflow, a single chain, leverage or peg categories and a flag add points; ≥ 50 is High.</li></ol></div>' +
       modelCard() + '</div>';
   }
