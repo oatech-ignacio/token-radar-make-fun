@@ -180,7 +180,7 @@ export interface LiveRow {
   wf_pred_usd: number | null;
 }
 
-export interface Score { n: number; r2: number; rho: number; med_err_x: number }
+export interface Score { n: number; r2: number; rho: number; med_err_x: number; hit3: number }
 
 export interface Fit {
   n: number;
@@ -332,7 +332,7 @@ function rankOf(v: number[]): number[] {
   return r;
 }
 
-/** Held-out score: R^2, Spearman's rho and the median error as a factor (x2 = off by half or double). */
+/** Held-out score: R^2, Spearman's rho, the median error as a factor (x2 = off by half or double) and hit3, the share within x3. */
 export function score(y: number[], yh: number[]): Score {
   const m = y.reduce((s, v) => s + v, 0) / y.length;
   let ss = 0;
@@ -342,7 +342,7 @@ export function score(y: number[], yh: number[]): Score {
   const rb = rankOf(yh);
   const n = y.length;
   const d2 = ra.reduce((s, v, i) => s + (v - rb[i]!) ** 2, 0);
-  return { n, r2: r4(1 - sr / ss), rho: r4(1 - (6 * d2) / (n * (n * n - 1))), med_err_x: r4(Math.exp(median(y.map((v, i) => Math.abs(v - yh[i]!))))) };
+  return { n, r2: r4(1 - sr / ss), rho: r4(1 - (6 * d2) / (n * (n * n - 1))), med_err_x: r4(Math.exp(median(y.map((v, i) => Math.abs(v - yh[i]!))))), hit3: r4(y.filter((v, i) => Math.abs(v - yh[i]!) < Math.log(3)).length / n) };
 }
 
 export function fitSet(snapshot: Snapshot): SnapshotProtocol[] {

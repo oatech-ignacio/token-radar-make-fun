@@ -141,15 +141,20 @@
   }
 
   // Blind tests on the traded peers: the fitted equation against a flat mcap/TVL rule, same folds, same split.
-  var TESTS = [['5-fold median miss', F.cv.med_err_x, F.baseline_cv.med_err_x, -1], ['Date-split median miss', F.walk.med_err_x, F.baseline_walk.med_err_x, -1],
-    ['5-fold R² (log cap)', F.cv.r2, F.baseline_cv.r2, 1], ['Date-split R² (log cap)', F.walk.r2, F.baseline_walk.r2, 1]];
-  var WINS = TESTS.filter(function (t) { return (t[1] - t[2]) * t[3] > 0; }).length;
+  // Each metric is scored on both held-out sets; a win is a better number than the flat rule on the same rows.
+  var TESTS = [['Within ×3 of real cap', 'hit3', 1], ['Median miss', 'med_err_x', -1], ['R² (log cap)', 'r2', 1]];
+  var PAIRS = [[F.cv, F.baseline_cv], [F.walk, F.baseline_walk]];
+  var WINS = 0;
+  TESTS.forEach(function (t) { PAIRS.forEach(function (p) { if ((p[0][t[1]] - p[1][t[1]]) * t[2] > 0) WINS++; }); });
+  var NTESTS = TESTS.length * PAIRS.length;
+  function fmtT(t, x) { return t[1] === 'hit3' ? Math.round(100 * x) + '%' : t[1] === 'med_err_x' ? '×' + f2(x) : f2(x); }
   function blindBox() {
-    return '<div class="scbox"><span class="cap">BLIND TEST ON ' + F.n + ' TRADED PEERS</span><table class="mini"><thead><tr><th>held out</th><th class="n">fitted</th><th class="n">flat mcap/TVL</th></tr></thead><tbody>' +
+    return '<div class="scbox"><span class="cap">BLIND TEST · ' + F.n + ' TRADED PEERS · FITTED WINS ' + WINS + '/' + NTESTS + '</span><table class="mini"><thead><tr><th>held out</th><th class="n" colspan="2">5-fold · ' + F.cv.n + '</th><th class="n" colspan="2">newest ' + F.walk.n + '</th></tr></thead><tbody>' +
       TESTS.map(function (t) {
-        var fx = function (x) { return t[3] < 0 ? '×' + f2(x) : f2(x); };
-        return '<tr><td>' + t[0] + '</td><td class="n"><b class="' + ((t[1] - t[2]) * t[3] > 0 ? 'up' : 'down') + '">' + fx(t[1]) + '</b></td><td class="n">' + fx(t[2]) + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
+        return '<tr><td>' + t[0] + '</td>' + PAIRS.map(function (p) {
+          return '<td class="n"><b class="' + ((p[0][t[1]] - p[1][t[1]]) * t[2] > 0 ? 'up' : 'down') + '">' + fmtT(t, p[0][t[1]]) + '</b></td><td class="n flat">' + fmtT(t, p[1][t[1]]) + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody></table><p class="bnote">Grey: flat mcap/TVL rule. Newest: listed ≥ ' + esc(F.walk.cut) + ', fit on ' + F.walk.n_train + ' older.</p></div>';
   }
   function hero() {
     var worth = R.rows.filter(function (r) { return r.plan.verdict.label === 'Worth it'; });
@@ -158,10 +163,10 @@
     var k = [
       [money(sum(R.rows, function (r) { return r.implied_value_usd; })), 'implied value of ' + R.rows.length + ' rows'],
       [worth.length + ' / ' + R.rows.length, 'farms worth it at ≤ ' + money(M.deposit_max) + ' deposit'],
-      ['×' + f2(F.cv.med_err_x) + '<small> vs ×' + f2(F.baseline_cv.med_err_x) + '</small>', 'blind miss: fitted vs flat rule'],
+      [Math.round(100 * F.cv.hit3) + '%<small> vs ' + Math.round(100 * F.baseline_cv.hit3) + '%</small>', 'held-out peers within ×3: fitted vs flat'],
       [money(fast.plan.verdict.usd_per_hour) + '/h', 'best net pay · ' + esc(fast.name)],
     ];
-    return '<p class="headline"><span>Read first</span><b>' + worth.length + ' of ' + R.rows.length + '</b> repay ' + M.worth_ratio + '× gas, fees and hours · top farm <b>#' + top.rank + ' ' + esc(top.name) + '</b>: ' + money(top.implied_value_usd) + ' implied, ' + money(top.plan.verdict.deposit_usd) + ' in, ' + money(top.plan.verdict.usd_per_hour) + '/h net · fitted value beats flat mcap/TVL on <b>' + WINS + '/' + TESTS.length + '</b> blind tests</p>' +
+    return '<p class="headline"><span>Read first</span><b>' + worth.length + ' of ' + R.rows.length + '</b> repay ' + M.worth_ratio + '× gas, fees and hours · top farm <b>#' + top.rank + ' ' + esc(top.name) + '</b>: ' + money(top.implied_value_usd) + ' implied, ' + money(top.plan.verdict.deposit_usd) + ' in, ' + money(top.plan.verdict.usd_per_hour) + '/h net · fitted value beats flat mcap/TVL on <b>' + WINS + '/' + NTESTS + '</b> blind scores</p>' +
       strip() + '<section class="hero"><div><div class="kpis">' + k.map(function (v) { return '<div class="kpi"><b>' + v[0] + '</b><span>' + v[1] + '</span></div>'; }).join('') + '</div>' +
       '<div class="formula"><i>Fitted value: </i>' + equation() +
       '<p class="judge">Each row: its own TVL, 7d growth, years with no token and first chain. No name is hard-coded. Drop shares, gas and $' + M.time_usd_per_hour + '/h time are stated assumptions.</p></div></div>' +
@@ -249,9 +254,10 @@
       '<div class="detail-grid"><section><h3>The value as an equation</h3>' + eqTable(r) +
       '<h3>Airdrop math</h3><div class="calc">pool = <b>' + money(r.implied_value_usd) + '</b> × ' + (r.airdrop_share * 100).toFixed(0) + '% community share = <b>' + money(r.airdrop_pool_usd) + '</b> · per $1k = pool × ' + (M.depositor_share * 100) + '% to depositors × $1,000 / TVL = <b>' + money(r.per_1k_usd) + '</b></div>' +
       '<h3>Verdict · ' + vtag(v) + '</h3><p class="vtext v-' + v.label.replace(' ', '') + '">' + esc(v.text) + '</p><details open><summary>Same plan at other deposit sizes</summary>' + tiers(r) + '</details>' +
-      '<h3>Risk · <span class="risk r-' + r.risk.level + '">' + r.risk.level + ' ' + r.risk.score + '/100</span> <span class="rnote">' + esc(r.risk.notes.join('; ')) + '</span></h3></section><section>' +
+      '</section><section>' +
       '<h3>Conditional farm route · ' + esc(p.chain) + ' · ' + esc(p.wallet) + ' · ' + money(p.capital_usd) + '</h3><p class="route-note">Category-derived route. Verify assets, deployment and withdrawals in the official app before funding. Costs below are budget assumptions, not live quotes.</p><table class="plan"><tbody>' + plan + '</tbody></table>' +
       '<div class="totals"><div><b>' + money(p.total_cost_usd) + '</b><span>gas + fees, whole hold</span></div><div><b>' + p.setup_minutes + ' min</b><span>to set up</span></div><div><b>' + p.weekly_minutes + ' min/wk</b><span>upkeep · ' + p.hold_days + ' d hold</span></div><div><b>' + money(v.usd_per_hour) + '/h</b><span>net per hour of work</span></div></div>' +
+      '<p class="riskline"><span class="risk r-' + r.risk.level + '">' + r.risk.level + ' risk · ' + r.risk.score + '/100</span>' + esc(r.risk.notes.join('; ')) + '</p>' +
       '</section></div>' +
       '<p class="note">Implied value is this model\'s claim from the snapshot of ' + esc(R.as_of) + ', not a forecast that a token will launch. The record shows no token; that does not prove none exists.</p>';
   }
@@ -280,14 +286,14 @@
         return '<tr><td><span class="pname">' + esc(l.name) + '</span><span class="badge b-trade">' + esc(l.symbol || 'TOKEN') + '</span><div class="pmeta">' + esc(l.category || '') + '</div></td><td class="n">' + money(l.tvl_usd) + '</td><td class="n">' + money(l.mcap_usd) + '</td><td class="n">' + money(l.cv_pred_usd) + '</td><td class="n">' + (miss >= 1 ? '×' + miss.toFixed(1) : '÷' + (1 / miss).toFixed(1)) + '</td><td class="n">' + (l.wf_pred_usd ? money(l.wf_pred_usd) : '<span class="pmeta">train</span>') + '</td></tr>';
       }).join('') + '</tbody></table></div></div>' + modelCard() + '</div>';
   }
-  function scoreRow(name, s, note) { return '<tr><td>' + name + '</td><td class="n">' + s.n + '</td><td class="n">' + f2(s.r2) + '</td><td class="n">' + f2(s.rho) + '</td><td class="n">×' + f2(s.med_err_x) + '</td><td class="pmeta">' + note + '</td></tr>'; }
+  function scoreRow(name, s, note) { return '<tr><td>' + name + '</td><td class="n">' + s.n + '</td><td class="n">' + f2(s.r2) + '</td><td class="n">' + f2(s.rho) + '</td><td class="n">×' + f2(s.med_err_x) + '</td><td class="n">' + Math.round(100 * s.hit3) + '%</td><td class="pmeta">' + note + '</td></tr>'; }
   function modelCard() {
     return '<div class="card"><h2>The fitted equation</h2><p class="formula">' + equation() + '</p>' +
       '<table><thead><tr><th>term</th><th class="n">b</th><th class="n">SE</th><th class="n">5-fold R² without it</th></tr></thead><tbody>' + F.coef.map(function (c, i) {
         var ab = F.ablation.filter(function (a) { return a.term === c.term; })[0];
         return '<tr><td>' + esc(c.term) + '</td><td class="n"><b>' + c.b.toFixed(4) + '</b></td><td class="n">' + c.se.toFixed(4) + '</td><td class="n">' + (ab ? f2(ab.cv.r2) + ' vs ' + f2(F.cv.r2) : '–') + '</td></tr>';
       }).join('') + '</tbody></table>' +
-      '<h2>Held-out diagnostics · log market cap</h2><table><thead><tr><th>test</th><th class="n">n</th><th class="n">R²</th><th class="n">ρ</th><th class="n">median miss</th><th></th></tr></thead><tbody>' +
+      '<h2>Held-out diagnostics · log market cap</h2><table><thead><tr><th>test</th><th class="n">n</th><th class="n">R²</th><th class="n">ρ</th><th class="n">median miss</th><th class="n">within ×3</th><th></th></tr></thead><tbody>' +
       scoreRow('In sample', F.in_sample, 'not a test') + scoreRow('5-fold diagnostic', F.cv, 'fold = slug order mod ' + M.folds) + scoreRow('Flat ratio, 5-fold', F.baseline_cv, 'V = TVL × median mcap/TVL') +
       scoreRow('Walk-forward', F.walk, F.walk.n_train + ' older train, listed ≥ ' + esc(F.walk.cut) + ' test') + scoreRow('Flat ratio, walk-fwd', F.baseline_walk, 'same split') + '</tbody></table>' +
       '<p class="note">Feature families were explored on these splits: these are diagnostics, not untouched future tests. Walk-forward sorts listing dates within one snapshot; it is not a historical backtest. R² is measured on log market cap. The 80% band is the empirical 10th–90th percentile of fold residuals, not a calibrated launch forecast.</p>' +

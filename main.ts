@@ -81,7 +81,9 @@ writeFileSync(join(out, 'dashboard', 'valuation.txt'), 'Executable valuation sou
   const by = (l: string) => rows.filter((r) => r.plan.verdict.label === l);
   const worth = by('Worth it');
   const top = worth[0]!;
-  const tests: [string, { r2: number; med_err_x: number }, { r2: number; med_err_x: number }][] = [['5-fold', f.cv, f.baseline_cv], ['date split', f.walk, f.baseline_walk]];
+  const pairs = [[f.cv, f.baseline_cv], [f.walk, f.baseline_walk]] as const;
+  const pc = (x: number) => `${Math.round(100 * x)}%`;
+  const wins = pairs.reduce((n, [a, b]) => n + Number(a.hit3 > b.hit3) + Number(a.med_err_x < b.med_err_x) + Number(a.r2 > b.r2), 0);
   const eq = `ln V = ${f.coef[0]!.b.toFixed(2)} + ${f.coef[1]!.b.toFixed(3)}·ln TVL + ${f.coef[2]!.b.toFixed(3)}·ln(1+7d) ${f.coef[3]!.b < 0 ? '−' : '+'} ${Math.abs(f.coef[3]!.b).toFixed(3)}·ln(1+years with no token) + chain effect`;
   const steps = rows.map((r) => r.plan.steps.length);
   writeFileSync(join(out, 'dashboard', 'README.md'), [
@@ -91,10 +93,10 @@ writeFileSync(join(out, 'dashboard', 'valuation.txt'), 'Executable valuation sou
     `## Findings`,
     `- **Coverage.** ${c.covered}/${c.watchlist} watchlist + ${c.early} off-watchlist finds = ${c.ranked} pre-token rows (no symbol, no CoinGecko id, no cap). ${c.trading} trading protocols are never ranked; the ${c.fit_set} without CEX fit the model.`,
     `- **Value.** \`${eq}\`, Huber-fitted on ${f.n} traded peers (TVL slope ±${f.coef[1]!.se.toFixed(2)} SE). One function, valueOf, prices every row; no name list.`,
-    `- **Blind tests** (fitted vs flat mcap/TVL rule): ${tests.map(([n, a, b]) => `${n} median miss ×${a.med_err_x.toFixed(2)} vs ×${b.med_err_x.toFixed(2)}, R² ${a.r2.toFixed(2)} vs ${b.r2.toFixed(2)}`).join('; ')}.`,
-    `- **Farms.** ${worth.length} Worth it, ${by('Thin').length} Thin, ${by('Skip').length} Skip. Every plan has ${Math.min(...steps)}–${Math.max(...steps)} steps, each with its $ gas/fee, minutes and day. Each plan is sized to the smallest deposit where the drop repays ${m.worth_ratio}× gas, fees and hours at $${m.time_usd_per_hour}/h. Top farm: #${top.rank} ${top.name}, ${usd(top.implied_value_usd)} implied, ${usd(top.plan.verdict.deposit_usd)} in, $${top.plan.verdict.usd_per_hour}/h net.`,
+    `- **Blind tests** (fitted vs a flat mcap/TVL rule on the same held-out rows; fitted wins ${wins}/${pairs.length * 3}): within ×3 of the real cap ${pc(f.cv.hit3)} vs ${pc(f.baseline_cv.hit3)} on 5-fold (n ${f.cv.n}) and ${pc(f.walk.hit3)} vs ${pc(f.baseline_walk.hit3)} on the newest ${f.walk.n} listings (trained on the ${f.walk.n_train} older); median miss ×${f.cv.med_err_x.toFixed(2)} vs ×${f.baseline_cv.med_err_x.toFixed(2)} and ×${f.walk.med_err_x.toFixed(2)} vs ×${f.baseline_walk.med_err_x.toFixed(2)}; R² ${f.cv.r2.toFixed(2)} vs ${f.baseline_cv.r2.toFixed(2)} and ${f.walk.r2.toFixed(2)} vs ${f.baseline_walk.r2.toFixed(2)}.`,
+    `- **Farms.** ${worth.length} Worth it, ${by('Thin').length} Thin, ${by('Skip').length} Skip. Every plan has ${Math.min(...steps) === Math.max(...steps) ? Math.min(...steps) : `${Math.min(...steps)}–${Math.max(...steps)}`} steps, each with its $ gas/fee, minutes and day. Each plan is sized to the smallest deposit where the drop repays ${m.worth_ratio}× gas, fees and hours at $${m.time_usd_per_hour}/h. Top farm: #${top.rank} ${top.name}, ${usd(top.implied_value_usd)} implied, ${usd(top.plan.verdict.deposit_usd)} in, $${top.plan.verdict.usd_per_hour}/h net.`,
     `## Limits`,
-    `- The fit is modest: errors are wide (80% band ×${Math.exp(f.band.q10).toFixed(2)}–×${Math.exp(f.band.q90).toFixed(1)}, shown on every row), and the date-split R² is still below zero.`,
+    `- The fit is modest: errors are wide (80% band ×${Math.exp(f.band.q10).toFixed(2)}–×${Math.exp(f.band.q90).toFixed(1)}, shown on every row), and on the newest listings R² is below zero (levels drift by listing date), so read a row's value as a ranked estimate with its band, not a price.`,
     `- Drop shares (${m.depositor_share * 100}% of the pool to depositors), gas and the time price are stated assumptions. The snapshot has no contracts, so each route says to verify assets in the app.`,
     `## Code map`,
     `app.js: hero, blindBox, filtered, eqTable, detail, tiers. valuation.txt: the fitting and pricing functions, copied verbatim from lib/model.ts.`,
